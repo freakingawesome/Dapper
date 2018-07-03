@@ -146,7 +146,7 @@ namespace Dapper.Contrib.Extensions
             return writeAttribute.Write;
         }
 
-        private static PropertyInfo GetSingleKey<T>(string method)
+        public static PropertyInfo GetSingleKey<T>(string method)
         {
             var type = typeof(T);
             var keys = KeyPropertiesCache(type);
@@ -280,7 +280,7 @@ namespace Dapper.Contrib.Extensions
         /// </summary>
         public static TableNameMapperDelegate TableNameMapper;
 
-        private static string GetTableName(Type type)
+        public static string GetTableName(Type type)
         {
             if (TypeTableName.TryGetValue(type.TypeHandle, out string name)) return name;
 
