@@ -45,26 +45,7 @@ namespace Dapper.Contrib.Extensions
             if (res == null)
                 return null;
 
-            var obj = ProxyGenerator.GetInterfaceProxy<T>();
-
-            foreach (var property in TypePropertiesCache(type))
-            {
-                var val = res[property.Name];
-                if (val == null) continue;
-                if (property.PropertyType.IsGenericType() && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
-                {
-                    var genericType = Nullable.GetUnderlyingType(property.PropertyType);
-                    if (genericType != null) property.SetValue(obj, Convert.ChangeType(val, genericType), null);
-                }
-                else
-                {
-                    property.SetValue(obj, Convert.ChangeType(val, property.PropertyType), null);
-                }
-            }
-
-            ((IProxy)obj).IsDirty = false;   //reset change tracking and return
-
-            return obj;
+            return GenerateProxy<T>(type, res);
         }
 
         /// <summary>
@@ -105,22 +86,7 @@ namespace Dapper.Contrib.Extensions
             var list = new List<T>();
             foreach (IDictionary<string, object> res in result)
             {
-                var obj = ProxyGenerator.GetInterfaceProxy<T>();
-                foreach (var property in TypePropertiesCache(type))
-                {
-                    var val = res[property.Name];
-                    if (val == null) continue;
-                    if (property.PropertyType.IsGenericType() && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
-                    {
-                        var genericType = Nullable.GetUnderlyingType(property.PropertyType);
-                        if (genericType != null) property.SetValue(obj, Convert.ChangeType(val, genericType), null);
-                    }
-                    else
-                    {
-                        property.SetValue(obj, Convert.ChangeType(val, property.PropertyType), null);
-                    }
-                }
-                ((IProxy)obj).IsDirty = false;   //reset change tracking and return
+                var obj = GenerateProxy<T>(type, res);
                 list.Add(obj);
             }
             return list;
@@ -339,6 +305,29 @@ namespace Dapper.Contrib.Extensions
             var statement = "DELETE FROM " + GetTableName(type);
             var deleted = await connection.ExecuteAsync(statement, null, transaction, commandTimeout).ConfigureAwait(false);
             return deleted > 0;
+        }
+
+        private static T GenerateProxy<T>(Type type, IDictionary<string, object> res) where T : class
+        {
+            var obj = ProxyGenerator.GetInterfaceProxy<T>();
+
+            foreach (var property in TypePropertiesCache(type))
+            {
+                var val = res[property.Name];
+                if (val == null) continue;
+                if (property.PropertyType.IsGenericType() && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                {
+                    var genericType = Nullable.GetUnderlyingType(property.PropertyType);
+                    if (genericType != null) property.SetValue(obj, Convert.ChangeType(val, genericType), null);
+                }
+                else
+                {
+                    property.SetValue(obj, Convert.ChangeType(val, property.PropertyType), null);
+                }
+            }
+
+            ((IProxy)obj).IsDirty = false;   //reset change tracking and return
+            return obj;
         }
     }
 }
