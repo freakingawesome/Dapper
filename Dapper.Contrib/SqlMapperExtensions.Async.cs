@@ -49,6 +49,51 @@ namespace Dapper.Contrib.Extensions
         }
 
         /// <summary>
+        /// This is needed only because the query cache uses type handles as keys
+        /// </summary>
+        class GetMultipleTypeHandle<T> { }
+
+        /// <summary>
+        /// Returns multiple entities by ids from table "Ts" asynchronously using .NET 4.5 Task. T must be of interface type.
+        /// Id must be marked with [Key] attribute.
+        /// Created entity is tracked/intercepted for changes and used by the Update() extension.
+        /// </summary>
+        /// <typeparam name="T">Interface type to create and populate</typeparam>
+        /// <param name="connection">Open SqlConnection</param>
+        /// <param name="ids">Id of the entity to get, must be marked with [Key] attribute</param>
+        /// <param name="transaction">The transaction to run under, null (the default) if none</param>
+        /// <param name="commandTimeout">Number of seconds before command execution timeout</param>
+        /// <returns>Entity of T</returns>
+        public static async Task<IEnumerable<T>> GetMultipleAsync<T>(this IDbConnection connection, IEnumerable<dynamic> ids, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
+        {
+            if (ids == null || !ids.Any())
+            {
+                return new T[0];
+            }
+
+            var type = typeof(T);
+            var cacheType = typeof(GetMultipleTypeHandle<T>);
+
+            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            {
+                var key = GetSingleKey<T>(nameof(GetAsync));
+                var name = GetTableName(type);
+
+                sql = $"SELECT * FROM {name} WHERE {key.Name} IN @ids";
+                GetQueries[cacheType.TypeHandle] = sql;
+            }
+
+            var dynParms = new DynamicParameters();
+            dynParms.Add("@ids", ids);
+
+            if (!type.IsInterface())
+            {
+                return await connection.QueryAsync<T>(sql, dynParms, transaction, commandTimeout);
+            }
+            return await GetAllAsyncImpl<T>(connection, dynParms, transaction, commandTimeout, sql, type);
+        }
+
+        /// <summary>
         /// Returns a list of entites from table "Ts".  
         /// Id of T must be marked with [Key] attribute.
         /// Entities created from interfaces are tracked/intercepted for changes and used by the Update() extension
@@ -77,12 +122,12 @@ namespace Dapper.Contrib.Extensions
             {
                 return connection.QueryAsync<T>(sql, null, transaction, commandTimeout);
             }
-            return GetAllAsyncImpl<T>(connection, transaction, commandTimeout, sql, type);
+            return GetAllAsyncImpl<T>(connection, null, transaction, commandTimeout, sql, type);
         }
 
-        private static async Task<IEnumerable<T>> GetAllAsyncImpl<T>(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, string sql, Type type) where T : class
+        private static async Task<IEnumerable<T>> GetAllAsyncImpl<T>(IDbConnection connection, object dynParm, IDbTransaction transaction, int? commandTimeout, string sql, Type type) where T : class
         {
-            var result = await connection.QueryAsync(sql).ConfigureAwait(false);
+            var result = await connection.QueryAsync(sql, dynParm).ConfigureAwait(false);
             var list = new List<T>();
             foreach (IDictionary<string, object> res in result)
             {
